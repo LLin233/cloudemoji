@@ -9,7 +9,6 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
-import android.mtp.MtpConstants;
 import android.net.Uri;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
@@ -26,26 +25,28 @@ import com.mikepenz.materialdrawer.accountswitcher.AccountHeader;
 import com.mikepenz.materialdrawer.accountswitcher.AccountHeaderBuilder;
 import com.mikepenz.materialdrawer.model.DividerDrawerItem;
 import com.mikepenz.materialdrawer.model.PrimaryDrawerItem;
+import com.mikepenz.materialdrawer.model.ProfileDrawerItem;
 import com.mikepenz.materialdrawer.model.interfaces.IDrawerItem;
-import com.orm.SugarApp;
 import com.orm.query.Condition;
 import com.orm.query.Select;
 
 import org.apache.commons.io.IOUtils;
 import org.ktachibana.cloudemoji.BaseActivity;
+import org.ktachibana.cloudemoji.BaseApplication;
+import org.ktachibana.cloudemoji.BaseHttpClient;
 import org.ktachibana.cloudemoji.Constants;
 import org.ktachibana.cloudemoji.R;
+import org.ktachibana.cloudemoji.auth.ParseUserState;
 import org.ktachibana.cloudemoji.events.FavoriteAddedEvent;
 import org.ktachibana.cloudemoji.events.FavoriteDeletedEvent;
-import org.ktachibana.cloudemoji.events.UpdateCheckedEvent;
 import org.ktachibana.cloudemoji.fragments.EmojiconsFragment;
 import org.ktachibana.cloudemoji.fragments.FavoriteFragment;
 import org.ktachibana.cloudemoji.fragments.HistoryFragment;
 import org.ktachibana.cloudemoji.fragments.RepositoriesFragment;
-import org.ktachibana.cloudemoji.models.inmemory.Source;
-import org.ktachibana.cloudemoji.models.persistence.Favorite;
-import org.ktachibana.cloudemoji.models.persistence.Repository;
-import org.ktachibana.cloudemoji.net.UpdateChecker;
+import org.ktachibana.cloudemoji.models.disk.Favorite;
+import org.ktachibana.cloudemoji.models.disk.Repository;
+import org.ktachibana.cloudemoji.models.memory.Source;
+import org.ktachibana.cloudemoji.net.VersionCodeCheckerClient;
 import org.ktachibana.cloudemoji.parsing.SourceParsingException;
 import org.ktachibana.cloudemoji.parsing.SourceReader;
 import org.ktachibana.cloudemoji.utils.NotificationHelper;
@@ -62,7 +63,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import butterknife.ButterKnife;
-import de.greenrobot.event.EventBus;
+import de.greenrobot.event.Subscribe;
 
 public class MainActivity extends BaseActivity implements
         Constants,
@@ -76,13 +77,12 @@ public class MainActivity extends BaseActivity implements
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EventBus.getDefault().register(this);
+        setContentView(R.layout.activity_main);
+        ButterKnife.inject(this);
 
-        // Setup views
-        setupViews();
-
-        // Setup left drawer
-        setupLeftDrawer();
+        // Setup drawer
+        setupDrawer();
+        setupAccountHeader();
 
         // Setup notification state
         setupNotificationState();
@@ -104,20 +104,28 @@ public class MainActivity extends BaseActivity implements
         refreshUiWithCurrentState();
     }
 
-    private void setupViews() {
-        setContentView(R.layout.activity_main);
-        ButterKnife.inject(this);
+    private void setupDrawer() {
+        mDrawer = new DrawerBuilder()
+                .withActivity(this)
+                .withToolbar(mToolbar)
+                .build();
+        setupLeftDrawer();
+    }
 
+    private void setupAccountHeader() {
+        mDrawer.removeHeader();
         AccountHeader accountHeader = new AccountHeaderBuilder()
                 .withActivity(this)
                 .withHeaderBackground(R.drawable.account_place_holder)
                 .build();
-
-        mDrawer = new DrawerBuilder()
-                .withActivity(this)
-                .withToolbar(mToolbar)
-                .withAccountHeader(accountHeader)
-                .build();
+        if (ParseUserState.isLoggedIn()) {
+            String username = ParseUserState.getLoggedInUser().getUsername();
+            String email = ParseUserState.getLoggedInUser().getEmail();
+            accountHeader.addProfile(
+                    new ProfileDrawerItem().withName(username).withEmail(email), 0
+            );
+        }
+        mDrawer.setHeader(accountHeader.getView());
     }
 
     /**
@@ -187,6 +195,14 @@ public class MainActivity extends BaseActivity implements
 
         // Divider
         mDrawer.addItem(new DividerDrawerItem());
+
+        // Add account
+        mDrawer.addItem(
+                new UncheckableSecondaryDrawerItem()
+                        .withName(R.string.account)
+                        .withIcon(R.drawable.ic_account)
+                        .withIdentifier(LIST_ITEM_ACCOUNT_ID)
+        );
 
         // Add repo manager
         mDrawer.addItem(
@@ -283,19 +299,19 @@ public class MainActivity extends BaseActivity implements
         return super.onOptionsItemSelected(item);
     }
 
-    public void onEvent(FavoriteAddedEvent event) {
+    @Subscribe
+    public void handle(FavoriteAddedEvent event) {
         showSnackBar(event.getEmoticon() + "\n" + getString(R.string.added_to_fav));
     }
 
-    public void onEvent(FavoriteDeletedEvent event) {
+    @Subscribe
+    public void handle(FavoriteDeletedEvent event) {
         showSnackBar(event.getEmoticon() + "\n" + getString(R.string.removed_from_fav));
     }
 
-    public void onEvent(UpdateCheckedEvent event) {
-        int latestVersionCode = event.getVercode();
-
+    private void checkVersionCode(boolean success, int latestVersionCode) {
         // If failed
-        if (latestVersionCode == 0) {
+        if (!success) {
             showSnackBar(R.string.update_checker_failed);
             return;
         }
@@ -342,17 +358,12 @@ public class MainActivity extends BaseActivity implements
     }
 
     @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        EventBus.getDefault().unregister(this);
-    }
-
-    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        // Coming back from repository manager, repositories may be changed
-        if (requestCode == REPOSITORY_MANAGER_REQUEST_CODE) {
+        // Coming back from repository manager or repository store, repositories may be changed
+        if (requestCode == REPOSITORY_MANAGER_REQUEST_CODE ||
+                requestCode == REPOSITORY_STORE_REQUEST_CODE) {
 
             // If currently showing repositories, refresh
             if (mState.getItemId() == LIST_ITEM_REPOSITORIES) {
@@ -368,6 +379,11 @@ public class MainActivity extends BaseActivity implements
             if (mState.getItemId() == LIST_ITEM_FAVORITE_ID) {
                 refreshUiWithCurrentState();
             }
+        }
+
+        // Coming back from account, user state may be changed
+        if (requestCode == ACCOUNT_REQUEST_CODE) {
+            setupAccountHeader();
         }
     }
 
@@ -414,8 +430,7 @@ public class MainActivity extends BaseActivity implements
 
             // Load file from assets and save to file system
             inputStream = getAssets().open("test.xml");
-            File file = new File(
-                    SugarApp.getSugarContext().getFilesDir(), defaultRepository.getFileName());
+            File file = new File(BaseApplication.context().getFilesDir(), defaultRepository.getFileName());
             outputStream = new FileOutputStream(file);
 
             // Copying
@@ -529,19 +544,33 @@ public class MainActivity extends BaseActivity implements
 
         if (listItemId == LIST_ITEM_ACCOUNT_ID) {
             Intent intent = new Intent(this, AccountActivity.class);
-            startActivity(intent);
+            startActivityForResult(intent, ACCOUNT_REQUEST_CODE);
             mState.revertToPreviousId();
         }
 
         if (listItemId == LIST_ITEM_REPO_STORE_ID) {
-            Intent intent = new Intent();
-            intent.setData(Uri.parse(STORE_URL));
-            startActivity(intent);
+            Intent intent = new Intent(this, RepositoryStoreActivity.class);
+            startActivityForResult(intent, REPOSITORY_STORE_REQUEST_CODE);
             mState.revertToPreviousId();
         }
 
         if (listItemId == LIST_ITEM_UPDATE_CHECKER_ID) {
-            new UpdateChecker().checkForLatestVercode();
+            new VersionCodeCheckerClient().checkForLatestVersionCode(new BaseHttpClient.IntCallback() {
+                @Override
+                public void success(int result) {
+                    checkVersionCode(true, result);
+                }
+
+                @Override
+                public void fail(Throwable t) {
+                    checkVersionCode(false, 0);
+                }
+
+                @Override
+                public void finish() {
+
+                }
+            });
             mState.revertToPreviousId();
         }
     }

@@ -10,13 +10,15 @@ import android.widget.SectionIndexer;
 import android.widget.TextView;
 
 import org.ktachibana.cloudemoji.R;
+import org.ktachibana.cloudemoji.events.EmptyEvent;
 import org.ktachibana.cloudemoji.events.FavoriteAddedEvent;
 import org.ktachibana.cloudemoji.events.FavoriteDeletedEvent;
-import org.ktachibana.cloudemoji.models.inmemory.Category;
-import org.ktachibana.cloudemoji.models.inmemory.Entry;
-import org.ktachibana.cloudemoji.models.inmemory.Source;
-import org.ktachibana.cloudemoji.models.persistence.Favorite;
+import org.ktachibana.cloudemoji.models.disk.Favorite;
+import org.ktachibana.cloudemoji.models.memory.Category;
+import org.ktachibana.cloudemoji.models.memory.Entry;
+import org.ktachibana.cloudemoji.models.memory.Source;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,6 +26,7 @@ import java.util.List;
 import butterknife.ButterKnife;
 import butterknife.InjectView;
 import de.greenrobot.event.EventBus;
+import de.greenrobot.event.Subscribe;
 import za.co.immedia.pinnedheaderlistview.SectionedBaseAdapter;
 
 public class SourceListViewAdapter extends SectionedBaseAdapter implements SectionIndexer {
@@ -34,31 +37,47 @@ public class SourceListViewAdapter extends SectionedBaseAdapter implements Secti
     private LayoutInflater mInflater;
     // Cache stores whether a emoticon is in favorites
     private HashMap<String, Boolean> mEmoticonInFavoritesCache;
-    private String[] mCategoryNameSectionIndexer;
-    private int[] mSectionToPositionMap;
+
+    // Section headers
+    private String[] mSectionHeaders;
+
+    // Section index to adapter position mapping
+    private List<Integer> mSectionIndexToPositionMapping;
 
     public SourceListViewAdapter(Context context, Source source) {
         mInflater = (LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         mSource = source;
-        mEmoticonInFavoritesCache = new LinkedHashMap<String, Boolean>();
+        mEmoticonInFavoritesCache = new LinkedHashMap<>();
 
         // Constant drawables
         mNoStarDrawable = context.getResources().getDrawable(R.drawable.ic_unfavorite);
         mStarDrawable = context.getResources().getDrawable(R.drawable.ic_favorite);
 
-        // Set up fast scroll indexer
-        mCategoryNameSectionIndexer = new String[mSource.getCategories().size()];
-        for (int i = 0; i < mCategoryNameSectionIndexer.length; i++) {
-            mCategoryNameSectionIndexer[i] = mSource.getCategories().get(i).getName();
+        // Section headers
+        mSectionHeaders = new String[mSource.getCategories().size()];
+        for (int i = 0; i < mSectionHeaders.length; i++) {
+            mSectionHeaders[i] = mSource.getCategories().get(i).getName();
         }
 
-        // Set up section to position map
-        mSectionToPositionMap = new int[mSource.getCategories().size()];
-        int runningTotal = 0;
-        for (int i = 0; i < mSource.getCategories().size(); i++) {
-            mSectionToPositionMap[i] = runningTotal;
-            runningTotal += mSource.getCategories().get(i).getEntries().size();
+        // Section index to adapter position mapping
+        mSectionIndexToPositionMapping = new ArrayList<>();
+        List<Integer> positionsToSectionsMapping = new ArrayList<>();
+        int section = 0;
+        for (Category category : mSource.getCategories()) {
+            for (Entry entry : category.getEntries()) {
+                positionsToSectionsMapping.add(section);
+            }
+            section++;
         }
+
+        mSectionIndexToPositionMapping.add(0);
+        for (int j = 1; j < positionsToSectionsMapping.size(); j++) {
+            if (!positionsToSectionsMapping.get(j).equals(positionsToSectionsMapping.get(j - 1))) {
+                mSectionIndexToPositionMapping.add(j);
+            }
+        }
+
+        EventBus.getDefault().register(this);
     }
 
     @Override
@@ -180,12 +199,17 @@ public class SourceListViewAdapter extends SectionedBaseAdapter implements Secti
 
     @Override
     public Object[] getSections() {
-        return mCategoryNameSectionIndexer;
+        return mSectionHeaders;
     }
 
     @Override
     public int getPositionForSection(int sectionIndex) {
-        return mSectionToPositionMap[sectionIndex];
+        return mSectionIndexToPositionMapping.get(sectionIndex);
+    }
+
+    @Subscribe
+    public void handle(EmptyEvent event) {
+
     }
 
     static class EntryViewHolder {

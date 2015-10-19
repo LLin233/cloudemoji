@@ -1,46 +1,41 @@
 package org.ktachibana.cloudemoji.adapters;
 
-import android.app.ProgressDialog;
 import android.content.Context;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.BaseAdapter;
 import android.widget.ImageView;
 import android.widget.TextView;
 
-import com.loopj.android.http.AsyncHttpClient;
-import com.loopj.android.http.AsyncHttpResponseHandler;
-import com.orm.SugarApp;
+import com.afollestad.materialdialogs.MaterialDialog;
 
-import org.apache.commons.io.IOUtils;
-import org.apache.http.Header;
+import org.ktachibana.cloudemoji.BaseApplication;
+import org.ktachibana.cloudemoji.BaseBaseAdapter;
+import org.ktachibana.cloudemoji.BaseHttpClient;
 import org.ktachibana.cloudemoji.Constants;
 import org.ktachibana.cloudemoji.R;
-import org.ktachibana.cloudemoji.events.NetworkUnavailableEvent;
 import org.ktachibana.cloudemoji.events.RepositoryBeginEditingEvent;
 import org.ktachibana.cloudemoji.events.RepositoryDownloadFailedEvent;
 import org.ktachibana.cloudemoji.events.RepositoryDownloadedEvent;
 import org.ktachibana.cloudemoji.events.RepositoryExportedEvent;
-import org.ktachibana.cloudemoji.models.inmemory.Source;
-import org.ktachibana.cloudemoji.models.persistence.Repository;
+import org.ktachibana.cloudemoji.models.disk.Repository;
+import org.ktachibana.cloudemoji.models.memory.Source;
+import org.ktachibana.cloudemoji.net.RepositoryDownloaderClient;
 import org.ktachibana.cloudemoji.parsing.BackupHelper;
 import org.ktachibana.cloudemoji.parsing.SourceJsonParser;
 import org.ktachibana.cloudemoji.parsing.SourceParsingException;
 import org.ktachibana.cloudemoji.parsing.SourceReader;
-import org.ktachibana.cloudemoji.utils.Utils;
+import org.ktachibana.cloudemoji.utils.NonCancelableProgressMaterialDialogBuilder;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
 
 import butterknife.ButterKnife;
 import butterknife.InjectView;
-import de.greenrobot.event.EventBus;
 
-public class RepositoryListViewAdapter extends BaseAdapter implements Constants {
+public class RepositoryListViewAdapter extends BaseBaseAdapter implements Constants {
     private List<Repository> mRepositories;
     private Context mContext;
 
@@ -94,67 +89,28 @@ public class RepositoryListViewAdapter extends BaseAdapter implements Constants 
         viewHolder.downloadButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // If network is available
-                if (Utils.networkAvailable(SugarApp.getSugarContext())) {
+                // Show a dialog progress dialog
+                final MaterialDialog dialog = new NonCancelableProgressMaterialDialogBuilder(mContext)
+                        .title(R.string.please_wait)
+                        .content(mContext.getString(R.string.downloading) + "\n" + item.getUrl())
+                        .show();
 
-                    // Show a dialog progress dialog
-                    final ProgressDialog dialog = new ProgressDialog(mContext);
-                    dialog.setTitle(R.string.downloading);
-                    dialog.setMessage(item.getUrl());
-                    dialog.show();
+                new RepositoryDownloaderClient().downloadSource(item, new BaseHttpClient.ObjectCallback<Repository>() {
+                    @Override
+                    public void success(Repository result) {
+                        BUS.post(new RepositoryDownloadedEvent(item));
+                    }
 
-                    new AsyncHttpClient().get(
-                            SugarApp.getSugarContext(),
-                            item.getUrl(),
-                            new AsyncHttpResponseHandler() {
-                                @Override
-                                public void onSuccess(int statusCode, Header[] headers, byte[] responseBody) {
-                                    // Write to file
-                                    File repositoryFile
-                                            = new File(SugarApp.getSugarContext().getFilesDir(), item.getFileName());
-                                    FileOutputStream outputStream = null;
-                                    try {
-                                        outputStream = new FileOutputStream(repositoryFile);
-                                        IOUtils.write(responseBody, outputStream);
+                    @Override
+                    public void fail(Throwable t) {
+                        BUS.post(new RepositoryDownloadFailedEvent(t));
+                    }
 
-                                        // Set repository to available and SAVE it
-                                        item.setAvailable(true);
-                                        item.save();
-
-                                        /**
-                                         * Tell anybody who cares about a repository being downloaded
-                                         * Namely the anybody would be repository list fragment
-                                         */
-                                        EventBus.getDefault().post(new RepositoryDownloadedEvent(item));
-                                    } catch (Exception e) {
-                                        Log.e(DEBUG_TAG, e.getLocalizedMessage());
-                                    } finally {
-                                        IOUtils.closeQuietly(outputStream);
-                                    }
-                                }
-
-                                @Override
-                                public void onFailure(int statusCode, Header[] headers, byte[] responseBody, Throwable error) {
-                                    /**
-                                     * Tell anybody who cares about a repository download fails
-                                     * Namely the anybody would be repository list fragment
-                                     */
-                                    EventBus.getDefault().post(new RepositoryDownloadFailedEvent(error));
-                                }
-
-                                @Override
-                                public void onFinish() {
-                                    // Dismiss the dialog
-                                    dialog.dismiss();
-                                }
-                            }
-                    );
-
-                } else {
-                    EventBus.getDefault().post(new NetworkUnavailableEvent());
-                }
-
-
+                    @Override
+                    public void finish() {
+                        dialog.dismiss();
+                    }
+                });
             }
         });
 
@@ -162,12 +118,7 @@ public class RepositoryListViewAdapter extends BaseAdapter implements Constants 
         viewHolder.editButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-
-                /**
-                 * Tell anybody who cares about a repository is started edited
-                 * Namely the anybody would be repository list fragment
-                 */
-                EventBus.getDefault().post(new RepositoryBeginEditingEvent(item));
+                BUS.post(new RepositoryBeginEditingEvent(item));
             }
         });
 
@@ -188,9 +139,9 @@ public class RepositoryListViewAdapter extends BaseAdapter implements Constants 
                     File exportFile = new File(filePath);
                     BackupHelper.writeFileToExternalStorage(json, exportFile);
 
-                    EventBus.getDefault().post(new RepositoryExportedEvent(filePath));
+                    BUS.post(new RepositoryExportedEvent(filePath));
                 } catch (SourceParsingException e) {
-                    EventBus.getDefault().post(e.getFormatType().toString());
+                    BUS.post(e.getFormatType().toString());
                 } catch (IOException e) {
                     Log.e(DEBUG_TAG, e.getLocalizedMessage());
                 } catch (Exception e) {
@@ -205,8 +156,7 @@ public class RepositoryListViewAdapter extends BaseAdapter implements Constants 
             public void onClick(View view) {
                 // Delete repository file from file system
                 item.delete();
-                File deletedFile = new File(SugarApp.getSugarContext().getFilesDir()
-                        , item.getFileName());
+                File deletedFile = new File(BaseApplication.context().getFilesDir(), item.getFileName());
                 deletedFile.delete();
 
                 // Update list

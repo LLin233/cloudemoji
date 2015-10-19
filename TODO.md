@@ -1,19 +1,15 @@
-# 0.6.8 (17)
+# Future
 
-Repo store
+Quick edit box
+
+Auto paste using assist
 
 Better looking list items in Favorite/Repo Manager
 
-Pull to refresh in Source
-
-# Future
-
 Add info in SourceFragment
 
-Use Android Support Design Library (Nav drawer)
+Pull to refresh in Source
 
-Emoticon wrapping
+Build EmoticonView
 
-Abstract out EventBus
-
-Try lower required version
+Use RecyclerView

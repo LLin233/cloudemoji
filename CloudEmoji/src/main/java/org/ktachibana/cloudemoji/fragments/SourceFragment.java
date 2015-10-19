@@ -1,31 +1,27 @@
 package org.ktachibana.cloudemoji.fragments;
 
 
-import android.annotation.TargetApi;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
-import android.widget.ListView;
 
 import org.ktachibana.cloudemoji.BaseFragment;
 import org.ktachibana.cloudemoji.R;
 import org.ktachibana.cloudemoji.adapters.SourceListViewAdapter;
 import org.ktachibana.cloudemoji.events.EntryCopiedAndAddedToHistoryEvent;
-import org.ktachibana.cloudemoji.models.inmemory.Entry;
-import org.ktachibana.cloudemoji.models.inmemory.Source;
-import org.ktachibana.cloudemoji.utils.Utils;
+import org.ktachibana.cloudemoji.models.memory.Entry;
+import org.ktachibana.cloudemoji.models.memory.Source;
 
 import butterknife.ButterKnife;
 import butterknife.InjectView;
-import de.greenrobot.event.EventBus;
 import za.co.immedia.pinnedheaderlistview.PinnedHeaderListView;
 
 public class SourceFragment extends BaseFragment {
     private static final String ARG_SOURCE = "source";
-    @InjectView(R.id.sourceListView)
-    PinnedHeaderListView mSourceListView;
+    @InjectView(R.id.list)
+    PinnedHeaderListView mList;
     private Source mSource;
     private SourceListViewAdapter mAdapter;
 
@@ -57,12 +53,12 @@ public class SourceFragment extends BaseFragment {
 
         // Setup contents
         mAdapter = new SourceListViewAdapter(getActivity(), mSource);
-        mSourceListView.setAdapter(mAdapter);
-        mSourceListView.setOnItemClickListener(new PinnedHeaderListView.OnItemClickListener() {
+        mList.setAdapter(mAdapter);
+        mList.setOnItemClickListener(new PinnedHeaderListView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> adapterView, View view, int section, int position, long id) {
                 Entry entry = (Entry) mAdapter.getItem(section, position);
-                EventBus.getDefault().post(new EntryCopiedAndAddedToHistoryEvent(entry));
+                BUS.post(new EntryCopiedAndAddedToHistoryEvent(entry));
             }
 
             @Override
@@ -70,17 +66,7 @@ public class SourceFragment extends BaseFragment {
 
             }
         });
-        setFastScrollAlwaysVisible(mSourceListView, true);
 
         return rootView;
-    }
-
-    @TargetApi(11)
-    private void setFastScrollAlwaysVisible(ListView listView, boolean fastScrollAlwaysVisible) {
-        if (fastScrollAlwaysVisible) {
-            if (Utils.aboveHoneycomb()) {
-                listView.setFastScrollAlwaysVisible(true);
-            }
-        }
     }
 }

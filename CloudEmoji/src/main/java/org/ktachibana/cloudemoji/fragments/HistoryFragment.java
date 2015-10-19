@@ -15,12 +15,11 @@ import org.ktachibana.cloudemoji.BaseFragment;
 import org.ktachibana.cloudemoji.R;
 import org.ktachibana.cloudemoji.adapters.HistoryListViewAdapter;
 import org.ktachibana.cloudemoji.events.EntryCopiedAndAddedToHistoryEvent;
-import org.ktachibana.cloudemoji.models.inmemory.Entry;
-import org.ktachibana.cloudemoji.models.persistence.History;
+import org.ktachibana.cloudemoji.models.disk.History;
+import org.ktachibana.cloudemoji.models.memory.Entry;
 
 import butterknife.ButterKnife;
 import butterknife.InjectView;
-import de.greenrobot.event.EventBus;
 
 public class HistoryFragment extends BaseFragment {
     @InjectView(R.id.historyListView)
@@ -63,7 +62,7 @@ public class HistoryFragment extends BaseFragment {
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 History history = (History) mAdapter.getItem(position);
                 Entry entry = new Entry(history.getEmoticon(), history.getDescription());
-                EventBus.getDefault().post(new EntryCopiedAndAddedToHistoryEvent(entry));
+                BUS.post(new EntryCopiedAndAddedToHistoryEvent(entry));
                 mAdapter.updateHistory();
             }
         });

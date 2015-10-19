@@ -25,17 +25,29 @@ A cloud solution to your favorite emoticons
 
 ## Features
 * Multi-repository management
-* Favorites
+* Bookmarks
 * History
 * Search
 * Repository store
-* Backup and restore favorites
+* Backup and restore bookmarks
 * Swipe-up navigation bar icon to replace home
-* Add your favorites to your user dictionary (some IME's can use it!)
+* Add your bookmarks to your user dictionary (some IME's can use it!)
 * More...
 
 ## Screenshot
 ![screenshot](https://raw.githubusercontent.com/KTachibanaM/cloudemoji/master/screenshots/main.png)
+
+## Development
+We are using [Parse] (https://www.parse.com/) as our user sync backend service
+
+so the PrivateConstants.java is git-ignored since it contains private app keys
+
+You can either
+
+1. Create PrivateConstants.java manually and fill in random stuff if you are not developing any user sync related features
+2. Register a Parse account and create your own Parse backend (it has free tier service) if you are developing user sync related features
+
+We might be rolling our own backend implementation (also open-sourced!) and migrate user data from Parse to there.
 
 ## Libraries via Gradle
 * [appcompat-v4](https://developer.android.com/tools/support-library/features.html#v4)
@@ -43,7 +55,6 @@ A cloud solution to your favorite emoticons
 * [android-support-v4-preferencefragment] (https://github.com/kolavar/android-support-v4-preferencefragment)
 * [android-async-http](https://github.com/loopj/android-async-http)
 * [EventBus](https://github.com/greenrobot/EventBus)
-* [LinearListView](https://github.com/frankiesardo/LinearListView)
 * [ButterKnife](https://github.com/JakeWharton/butterknife)
 * [Gson](https://code.google.com/p/google-gson/)
 * [Apache Commons IO](http://commons.apache.org/proper/commons-io/)
@@ -52,6 +63,7 @@ A cloud solution to your favorite emoticons
 * [SnackBar] (https://github.com/MrEngineer13/SnackBar)
 * [material-dialogs] (https://github.com/afollestad/material-dialogs)
 * [MaterialDrawer] (https://github.com/mikepenz/MaterialDrawer)
+* [picasso] (http://github.com/square/picasso)
 
 ## Libraries via Jar/Aar balls
 * [ARCA](https://github.com/ACRA/acra)
